@@ -1,10 +1,11 @@
 import logging
 import os
 import sys
+import zlib
 
 from rbtools.api.errors import APIError
 from rbtools.clients import SCMClient, RepositoryInfo
-from rbtools.utils.checks import check_gnu_diff, check_install
+from rbtools.utils.checks import check_gnu_diff, check_gnu_patch, check_install
 from rbtools.utils.filesystem import make_tempfile
 from rbtools.utils.process import die, execute
 
@@ -24,6 +25,7 @@ class ClearCaseClient(SCMClient):
     This client assumes that cygwin is installed on windows.
     """
     viewtype = None
+    HLINK_MERGE = re.compile(r'"Merge@.*?" <- ".*"')
 
     def __init__(self, **kwargs):
         super(ClearCaseClient, self).__init__(**kwargs)
@@ -45,6 +47,11 @@ class ClearCaseClient(SCMClient):
         # Now that we know it's ClearCase, make sure we have GNU diff installed,
         # and error out if we don't.
         check_gnu_diff()
+
+        # When the exclude merge option is enabled, make sure we have GNU patch
+        # installed.
+        if self._options.xmerge:
+            check_gnu_patch()
 
         property_lines = execute(["cleartool", "lsview", "-full", "-properties",
                                   "-cview"], split_lines=True)
@@ -121,8 +128,9 @@ class ClearCaseClient(SCMClient):
         Changeset contain only first and last version of file made on branch.
         """
         changelist = {}
+        xpatchlist = {}
 
-        for path, previous, current in changeset:
+        for path, previous, current, hlinks in changeset:
             version_number = self._determine_version(current)
 
             if path not in changelist:
@@ -131,6 +139,17 @@ class ClearCaseClient(SCMClient):
                     'current': current,
                     'previous': previous
                 }
+
+            if self._options.xmerge and self.HLINK_MERGE.match(hlinks):
+                if path not in xpatchlist:
+                    xpatchlist[path] = {}
+
+                diff = self._simple_diff(
+                    self._construct_extended_path(path, current),
+                    self._construct_extended_path(path, previous))
+
+                if diff:
+                    xpatchlist[path][version_number] = diff
 
             if version_number == 0:
                 # Previous version of 0 version on branch is base
@@ -142,38 +161,188 @@ class ClearCaseClient(SCMClient):
         # Convert to list
         changeranges = []
         for path, version in changelist.iteritems():
+            xpatches = []
+            if path in xpatchlist:
+                xpatches = [
+                    xpatchlist[path][i]
+                    for i in sorted(xpatchlist[path])
+                ]
+
             changeranges.append(
                 (self._construct_extended_path(path, version['previous']),
-                 self._construct_extended_path(path, version['current']))
-            )
+                 self._construct_extended_path(path, version['current']),
+                 xpatches))
+
+            if self._options.debug:
+                logging.debug('adding changelist item: (%s, %s, %s)' % (
+                    changeranges[-1][0], changeranges[-1][1], len(changeranges[-1][2])))
 
         return changeranges
 
     def _sanitize_checkedout_changeset(self, changeset):
-        """Return changeset containing non-binary, checkdout file versions."""
+        """Return changeset containing non-binary, checkedout file
+        versions."""
 
         changeranges = []
         for path, previous, current in changeset:
             changeranges.append(
                 (self._construct_extended_path(path, previous),
-                self._construct_extended_path(path, current))
+                 self._construct_extended_path(path, current),
+                 None)
             )
 
         return changeranges
 
-    def _directory_content(self, path):
-        """Return directory content ready for saving to tempfile."""
-
-        return ''.join([
-            '%s\n' % s
-            for s in sorted(os.listdir(path))
-        ])
-
     def _construct_changeset(self, output):
         return [
             info.split('\t')
-            for info in output.strip().split('\n')
+            for info in output.splitlines()
         ]
+
+    def _simple_diff(self, old_file, new_file):
+        """Returns a simple diff (non-unified) as a list of lines
+        without linesep. uses temp files."""
+
+        if cpath.isdir(new_file):
+            # read directory content
+            old_content = directory_content(old_file)
+            new_content = directory_content(new_file)
+        elif cpath.exists(new_file):
+            # returns None for binary file
+            old_content = read_text_file(old_file)
+            new_content = read_text_file(new_file)
+
+        # check if binary file
+        if new_content is None or old_content is None:
+            return None
+
+        old_tmp = make_tempfile(
+            content=os.linesep.join(old_content))
+        new_tmp = make_tempfile(
+            content=os.linesep.join(new_content))
+
+        dl = execute(
+            ['diff', old_tmp, new_tmp], extra_ignore_errors=(1,2),
+            translate_newlines=False, split_lines=False)
+
+        eof_endl = dl.endswith('\n')
+        dl = dl.splitlines()
+        if eof_endl:
+            dl.append('')
+
+        try:
+            os.unlink(old_tmp)
+            os.unlink(new_tmp)
+        except:
+            pass
+
+        return dl
+
+    def _uni_diff(self, old_content, new_content, old_file,
+                  new_file):
+        """Returns unified diff as a list of lines with no end lines,
+        uses temp files. The input content should be a list of lines
+        without end lines."""
+
+        # Using difflib:
+        # for line in difflib.unified_diff(old_content, new_content,
+        #                                  old_file, new_file,
+        #                                  lineterm=''):
+        #     dl.append(line + os.linesep)
+
+        old_tmp = make_tempfile(content=os.linesep.join(old_content))
+        new_tmp = make_tempfile(content=os.linesep.join(new_content))
+
+        diff_cmd = ["diff", "-uN", old_tmp, new_tmp]
+        dl = execute(diff_cmd, extra_ignore_errors=(1,2),
+                     translate_newlines=False, split_lines=False)
+
+        eof_endl = dl.endswith('\n')
+
+        dl = dl.splitlines()
+        if eof_endl:
+            dl.append('')
+
+        try:
+            os.unlink(old_tmp)
+            os.unlink(new_tmp)
+        except:
+            pass
+
+        if dl and len(dl) > 1:
+            dl[0] = dl[0].replace(old_tmp, old_file)
+            dl[1] = dl[1].replace(new_tmp, new_file)
+
+        return dl
+
+    def _diff(self, old_content, new_content, old_file,
+              new_file, xpatches):
+        """Calculate the diff.
+
+        Content should be a list of strings with no endl. Supports
+        exclude patches (list of list of strings with no endl). If the
+        content is None, it is assumed that the file is binary. The file
+        names (new_file and old_file) are only to be used as a header
+        for a diff.
+
+        Returns None if the files are different and binary. Otherwise
+        returns a difference as a list of strings with no lineseps. The
+        binary files which are equal also return empty string."""
+
+        # check if binary files and if they differ
+        if old_content is None or new_content is None:
+            old_crc = zlib.crc32(open(old_file).read())
+            new_crc = zlib.crc32(open(new_file).read())
+            if old_crc != new_crc:
+                return None
+            else:
+                return u''
+
+        # check if we need to exclude anything from the diff
+        if xpatches:
+            for patch in reversed(xpatches):
+                patched = self._patch(new_content, patch)
+                if patched:
+                    new_content = patched
+
+        return self._uni_diff(old_content, new_content, old_file,
+                              new_file)
+
+    def _patch(self, content, patch):
+        """Patch the given content with a patch content. The content and
+        the patch should be a list of lines with no endl."""
+
+        content_file = make_tempfile(content=os.linesep.join(content))
+        patch_file = make_tempfile(content=os.linesep.join(patch))
+        reject_file = make_tempfile()
+        output_file = make_tempfile()
+
+        patch_cmd = ["patch", "-r", reject_file, "-o", output_file,
+                     "-i", patch_file, content_file]
+
+        output = execute(patch_cmd, extra_ignore_errors=(1,),
+                         translate_newlines=False)
+
+        if "FAILED at" in output:
+            logging.debug("patching content FAILED:")
+            logging.debug(output)
+
+        patched = open(output_file).read()
+        eof_endl = patched.endswith('\n')
+
+        patched = patched.splitlines()
+        if eof_endl:
+            patched.append('')
+
+        try:
+            os.unlink(content_file)
+            os.unlink(patch_file)
+            os.unlink(reject_file)
+            os.unlink(output_file)
+        except:
+            pass
+
+        return patched
 
     def get_checkedout_changeset(self):
         """Return information about the checked out changeset.
@@ -223,7 +392,7 @@ class ClearCaseClient(SCMClient):
             "brtype(%s)" % branch,
             "-exec",
             'cleartool descr -fmt ' \
-            r'"%En\t%PVn\t%Vn\n" ' \
+            r'"%En\t%PVn\t%Vn\t%[hlink]p\n" ' \
             + CLEARCASE_XPN],
             extra_ignore_errors=(1,),
             with_errors=False)
@@ -253,71 +422,45 @@ class ClearCaseClient(SCMClient):
 
         return (self.do_diff(changeset)[0], None)
 
-    def diff_files(self, old_file, new_file):
-        """Return unified diff for file.
+    def general_diff(self, old_file, new_file, xpatches):
+        """Performs a file/directory diff, interpreting the results and
+        cleanup."""
 
-        Most effective and reliable way is use gnu diff.
-        """
-        diff_cmd = ["diff", "-uN", old_file, new_file]
-        dl = execute(diff_cmd, extra_ignore_errors=(1, 2),
-                     translate_newlines=False)
+        old_content = None
+        new_content = None
 
-        # If the input file has ^M characters at end of line, lets ignore them.
-        dl = dl.replace('\r\r\n', '\r\n')
-        dl = dl.splitlines(True)
-
-        # Special handling for the output of the diff tool on binary files:
-        #     diff outputs "Files a and b differ"
-        # and the code below expects the output to start with
-        #     "Binary files "
-        if (len(dl) == 1 and
-            dl[0].startswith('Files %s and %s differ' % (old_file, new_file))):
-            dl = ['Binary files %s and %s differ\n' % (old_file, new_file)]
-
-        # We need oids of files to translate them to paths on reviewboard
-        # repository.
+        # We need oids of files to translate them to paths on
+        # reviewboard repository
         old_oid = execute(["cleartool", "describe", "-fmt", "%On", old_file])
         new_oid = execute(["cleartool", "describe", "-fmt", "%On", new_file])
 
-        if dl == [] or dl[0].startswith("Binary files "):
-            if dl == []:
-                dl = ["File %s in your changeset is unmodified\n" % new_file]
-
-            dl.insert(0, "==== %s %s ====\n" % (old_oid, new_oid))
-            dl.append('\n')
+        # The content should have line endings removed from it!
+        if cpath.isdir(new_file):
+            # read directory content
+            old_content = directory_content(old_file)
+            new_content = directory_content(new_file)
+        elif cpath.exists(new_file):
+            # returns None for binary file
+            old_content = read_text_file(old_file)
+            new_content = read_text_file(new_file)
         else:
-            dl.insert(2, "==== %s %s ====\n" % (old_oid, new_oid))
+            logging.debug("File %s does not exist or access is denied." % new_file)
+            return None
 
-        return dl
+        dl = self._diff(old_content, new_content, old_file, new_file,
+                        xpatches)
+        oid_line = "==== %s %s ====" % (old_oid, new_oid)
 
-    def diff_directories(self, old_dir, new_dir):
-        """Return uniffied diff between two directories content.
-
-        Function save two version's content of directory to temp
-        files and treate them as casual diff between two files.
-        """
-        old_content = self._directory_content(old_dir)
-        new_content = self._directory_content(new_dir)
-
-        old_tmp = make_tempfile(content=old_content)
-        new_tmp = make_tempfile(content=new_content)
-
-        diff_cmd = ["diff", "-uN", old_tmp, new_tmp]
-        dl = execute(diff_cmd,
-                     extra_ignore_errors=(1, 2),
-                     translate_newlines=False,
-                     split_lines=True)
-
-        # Replacing temporary filenames to
-        # real directory names and add ids
-        if dl:
-            dl[0] = dl[0].replace(old_tmp, old_dir)
-            dl[1] = dl[1].replace(new_tmp, new_dir)
-            old_oid = execute(["cleartool", "describe", "-fmt", "%On",
-                               old_dir])
-            new_oid = execute(["cleartool", "describe", "-fmt", "%On",
-                               new_dir])
-            dl.insert(2, "==== %s %s ====\n" % (old_oid, new_oid))
+        if dl is None:
+            dl = [oid_line,
+                  'Binary files %s and %s differ' % (old_file, new_file),
+                  '']
+        elif not dl:
+            dl = [oid_line,
+                  'File %s in your changeset is unmodified' % new_file,
+                  '']
+        else:
+            dl.insert(2, oid_line)
 
         return dl
 
@@ -325,19 +468,11 @@ class ClearCaseClient(SCMClient):
         """Generates a unified diff for all files in the changeset."""
 
         diff = []
-        for old_file, new_file in changeset:
-            dl = []
-            if cpath.isdir(new_file):
-                dl = self.diff_directories(old_file, new_file)
-            elif cpath.exists(new_file):
-                dl = self.diff_files(old_file, new_file)
-            else:
-                logging.error("File %s does not exist or access is denied."
-                              % new_file)
-                continue
+        for old_file, new_file, xpatches in changeset:
+            dl = self.general_diff(old_file, new_file, xpatches)
 
             if dl:
-                diff.append(''.join(dl))
+                diff.append(os.linesep.join(dl))
 
         return (''.join(diff), None)
 

@@ -91,6 +91,10 @@ OPEN_BROWSER    = False
 # Debugging.  For development...
 DEBUG           = False
 
+# Temporary directory used in tempfile package, the default is None
+# which is tempfile's package default.
+TEMP_DIR        = None
+
 ###
 # End user-settable variables.
 ###
@@ -1115,8 +1119,13 @@ def parse_options(args):
     parser.add_option("--tracking-branch",
                       dest="tracking", default=None,
                       metavar="TRACKING",
-                      help="Tracking branch from which your branch is derived "
-                           "(git only, defaults to origin/master)")
+                      help="tracking branch from which your branch is derived "
+                           "(git/clearcase only, for git defaults to origin/master, "
+                           "no default value for clearcase)")
+    parser.add_option("--exclude-merge",
+                      action="store_true", dest="xmerge", default=False,
+                      help="the Clearcase option to exclude all the merge/"
+                           "rebaseline operations for the tracking branch.")
     parser.add_option("--p4-client",
                       dest="p4_client", default=None,
                       help="the Perforce client name that the review is in")
@@ -1151,6 +1160,9 @@ def parse_options(args):
     parser.add_option('--http-password',
                       dest='http_password', default=None, metavar='PASSWORD',
                       help='password for HTTP Basic authentication')
+    parser.add_option('--temp-dir',
+                      dest='temp_dir', default=TEMP_DIR, metavar='DIR',
+                      help='temporary directory path (should exist)')
 
     (globals()["options"], args) = parser.parse_args(args)
 
