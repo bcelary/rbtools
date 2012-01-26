@@ -6,6 +6,7 @@ from rbtools.utils.process import die, execute
 
 
 GNU_DIFF_WIN32_URL = 'http://gnuwin32.sourceforge.net/packages/diffutils.htm'
+GNU_PATCH_WIN32_URL = 'http://gnuwin32.sourceforge.net/packages/patch.htm'
 
 
 def check_install(command):
@@ -37,14 +38,37 @@ def check_gnu_diff():
 
     if not has_gnu_diff:
         sys.stderr.write('\n')
-        sys.stderr.write('GNU diff is required for Subversion '
-                         'repositories. Make sure it is installed\n')
-        sys.stderr.write('and in the path.\n')
+        sys.stderr.write('GNU diff is required to post this review.'
+                         'Make sure it is installed and in the path.\n')
         sys.stderr.write('\n')
 
         if os.name == 'nt':
             sys.stderr.write('On Windows, you can install this from:\n')
             sys.stderr.write(GNU_DIFF_WIN32_URL)
+            sys.stderr.write('\n')
+
+        die()
+
+
+def check_gnu_patch():
+    """Checks if GNU patch is installed, and informs the user if it's not."""
+    has_gnu_patch = False
+
+    try:
+        result = execute(['patch', '--version'], ignore_errors=True)
+        has_gnu_patch = 'Free Software Foundation' in result
+    except OSError:
+        pass
+
+    if not has_gnu_patch:
+        sys.stderr.write('\n')
+        sys.stderr.write('GNU patch is required to post this review.'
+                         'Make sure it is installed and in the path.\n')
+        sys.stderr.write('\n')
+
+        if os.name == 'nt':
+            sys.stderr.write('On Windows, you can install this from:\n')
+            sys.stderr.write(GNU_PATCH_WIN32_URL)
             sys.stderr.write('\n')
 
         die()

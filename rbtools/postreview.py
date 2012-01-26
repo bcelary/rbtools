@@ -16,7 +16,7 @@ from rbtools.api.errors import APIError
 from rbtools.clients import scan_usable_client
 from rbtools.clients.perforce import PerforceClient
 from rbtools.clients.plastic import PlasticClient
-from rbtools.utils.filesystem import get_config_value, load_config_files
+from rbtools.utils.filesystem import get_config_value, load_config_files, TEMP_DIR
 from rbtools.utils.process import die
 
 try:

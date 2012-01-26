@@ -1,12 +1,13 @@
 import logging
 import os
+import re
 import sys
 import zlib
 
 from rbtools.api.errors import APIError
 from rbtools.clients import SCMClient, RepositoryInfo
 from rbtools.utils.checks import check_gnu_diff, check_gnu_patch, check_install
-from rbtools.utils.filesystem import make_tempfile
+from rbtools.utils.filesystem import make_tempfile, read_text_file
 from rbtools.utils.process import die, execute
 
 # This specific import is necessary to handle the paths for
@@ -205,8 +206,8 @@ class ClearCaseClient(SCMClient):
 
         if cpath.isdir(new_file):
             # read directory content
-            old_content = directory_content(old_file)
-            new_content = directory_content(new_file)
+            old_content = sorted(os.listdir(path))
+            new_content = sorted(os.listdir(path))
         elif cpath.exists(new_file):
             # returns None for binary file
             old_content = read_text_file(old_file)
@@ -287,7 +288,7 @@ class ClearCaseClient(SCMClient):
 
         Returns None if the files are different and binary. Otherwise
         returns a difference as a list of strings with no lineseps. The
-        binary files which are equal also return empty string."""
+        binary files which are equal also return an empty string."""
 
         # check if binary files and if they differ
         if old_content is None or new_content is None:
@@ -309,8 +310,10 @@ class ClearCaseClient(SCMClient):
                               new_file)
 
     def _patch(self, content, patch):
-        """Patch the given content with a patch content. The content and
-        the patch should be a list of lines with no endl."""
+        """Patch content with a patch. Returnes patched content.
+
+        The content and the patch should be a list of lines with no
+        endl."""
 
         content_file = make_tempfile(content=os.linesep.join(content))
         patch_file = make_tempfile(content=os.linesep.join(patch))
@@ -348,8 +351,8 @@ class ClearCaseClient(SCMClient):
         """Return information about the checked out changeset.
 
         This function returns: kind of element, path to file,
-        previews and current file version.
-        """
+        previews and current file version."""
+
         changeset = []
         # We ignore return code 1 in order to
         # omit files that Clear Case can't read.
@@ -373,8 +376,8 @@ class ClearCaseClient(SCMClient):
         """Returns information about the versions changed on a branch.
 
         This takes into account the changes on the branch owned by the
-        current user in all vobs of the current view.
-        """
+        current user in all vobs of the current view."""
+
         changeset = []
 
         # We ignore return code 1 in order to
@@ -402,26 +405,6 @@ class ClearCaseClient(SCMClient):
 
         return self._sanitize_branch_changeset(changeset)
 
-    def diff(self, files):
-        """Performs a diff of the specified file and its previous version."""
-
-        if self._options.tracking:
-            changeset = self.get_branch_changeset(self._options.tracking)
-        else:
-            changeset = self.get_checkedout_changeset()
-
-        return self.do_diff(changeset)
-
-    def diff_between_revisions(self, revision_range, args, repository_info):
-        """Performs a diff between passed revisions or branch."""
-
-        # Convert revision range to list of:
-        # (previous version, current version) tuples
-        revision_range = revision_range.split(';')
-        changeset = zip(revision_range[0::2], revision_range[1::2])
-
-        return (self.do_diff(changeset)[0], None)
-
     def general_diff(self, old_file, new_file, xpatches):
         """Performs a file/directory diff, interpreting the results and
         cleanup."""
@@ -437,8 +420,8 @@ class ClearCaseClient(SCMClient):
         # The content should have line endings removed from it!
         if cpath.isdir(new_file):
             # read directory content
-            old_content = directory_content(old_file)
-            new_content = directory_content(new_file)
+            old_content = sorted(os.listdir(path))
+            new_content = sorted(os.listdir(path))
         elif cpath.exists(new_file):
             # returns None for binary file
             old_content = read_text_file(old_file)
@@ -475,6 +458,26 @@ class ClearCaseClient(SCMClient):
                 diff.append(os.linesep.join(dl))
 
         return (''.join(diff), None)
+
+    def diff(self, files):
+        """Performs a diff of the specified file and its previous version."""
+
+        if self._options.tracking:
+            changeset = self.get_branch_changeset(self._options.tracking)
+        else:
+            changeset = self.get_checkedout_changeset()
+
+        return self.do_diff(changeset)
+
+    def diff_between_revisions(self, revision_range, args, repository_info):
+        """Performs a diff between passed revisions or branch."""
+
+        # Convert revision range to list of:
+        # (previous version, current version) tuples
+        revision_range = revision_range.split(';')
+        changeset = zip(revision_range[0::2], revision_range[1::2])
+
+        return (self.do_diff(changeset)[0], None)
 
 
 class ClearCaseRepositoryInfo(RepositoryInfo):

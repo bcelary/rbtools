@@ -4,6 +4,7 @@ import tempfile
 from rbtools.utils.process import die
 
 
+TEMP_DIR = None
 CONFIG_FILE = '.reviewboardrc'
 
 tempfiles = []
@@ -61,7 +62,7 @@ def make_tempfile(content=None):
     Creates a temporary file and returns the path. The path is stored
     in an array for later cleanup.
     """
-    fd, tmpfile = tempfile.mkstemp()
+    fd, tmpfile = tempfile.mkstemp(dir=TEMP_DIR)
 
     if content:
         os.write(fd, content)
@@ -78,3 +79,34 @@ def walk_parents(path):
     while os.path.splitdrive(path)[1] != os.sep:
         yield path
         path = os.path.dirname(path)
+
+
+def read_text_file(file, keepends=False):
+    """Returns text file contents as a list of lines if the file is
+    a text file.
+
+    Returns None if the file is binary (contains 00 byte). By default
+    will add an extra empty string at the end of the string list to
+    indicate that the file has eol at its end. If eof eol is missing,
+    the empty string wont be added."""
+
+    fd = open(file, 'rb')
+    content = ''
+
+    try:
+        chunksize = 1024
+        while 1:
+            chunk = fd.read(chunksize)
+            if '\0' in chunk:
+                return None
+
+            if chunk == '':
+                eof_endl = content.endswith('\n')
+                content = content.splitlines(keepends)
+                if not keepends and eof_endl:
+                    content.append('')
+                return content
+
+            content += chunk
+    finally:
+        fd.close()
