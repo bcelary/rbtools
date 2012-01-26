@@ -145,9 +145,10 @@ class ClearCaseClient(SCMClient):
                 if path not in xpatchlist:
                     xpatchlist[path] = {}
 
-                diff = self._simple_diff(
+                diff = self._diff(
                     self._construct_extended_path(path, current),
-                    self._construct_extended_path(path, previous))
+                    self._construct_extended_path(path, previous),
+                    unified=False)
 
                 if diff:
                     xpatchlist[path][version_number] = diff
@@ -200,66 +201,24 @@ class ClearCaseClient(SCMClient):
             for info in output.splitlines()
         ]
 
-    def _simple_diff(self, old_file, new_file):
-        """Returns a simple diff (non-unified) as a list of lines
-        without linesep. uses temp files."""
-
-        if cpath.isdir(new_file):
-            # read directory content
-            old_content = sorted(os.listdir(old_file))
-            new_content = sorted(os.listdir(new_file))
-        elif cpath.exists(new_file):
-            # returns None for binary file
-            old_content = read_text_file(old_file)
-            new_content = read_text_file(new_file)
-
-        # check if binary file
-        if new_content is None or old_content is None:
-            return None
-
-        old_tmp = make_tempfile(
-            content=os.linesep.join(old_content))
-        new_tmp = make_tempfile(
-            content=os.linesep.join(new_content))
-
-        dl = execute(
-            ['diff', old_tmp, new_tmp], extra_ignore_errors=(1,2),
-            translate_newlines=False, split_lines=False)
-
-        eof_endl = dl.endswith('\n')
-        dl = dl.splitlines()
-        if eof_endl:
-            dl.append('')
-
-        try:
-            os.unlink(old_tmp)
-            os.unlink(new_tmp)
-        except:
-            pass
-
-        return dl
-
-    def _uni_diff(self, old_content, new_content, old_file,
-                  new_file):
+    def _content_diff(self, old_content, new_content, old_file,
+                      new_file, unified=True):
         """Returns unified diff as a list of lines with no end lines,
         uses temp files. The input content should be a list of lines
         without end lines."""
 
-        # Using difflib:
-        # for line in difflib.unified_diff(old_content, new_content,
-        #                                  old_file, new_file,
-        #                                  lineterm=''):
-        #     dl.append(line + os.linesep)
-
         old_tmp = make_tempfile(content=os.linesep.join(old_content))
         new_tmp = make_tempfile(content=os.linesep.join(new_content))
 
-        diff_cmd = ["diff", "-uN", old_tmp, new_tmp]
+        diff_cmd = ['diff']
+        if unified:
+            diff_cmd.append('-uN')
+        diff_cmd.extend((old_tmp, new_tmp))
+
         dl = execute(diff_cmd, extra_ignore_errors=(1,2),
                      translate_newlines=False, split_lines=False)
 
         eof_endl = dl.endswith('\n')
-
         dl = dl.splitlines()
         if eof_endl:
             dl.append('')
@@ -270,14 +229,13 @@ class ClearCaseClient(SCMClient):
         except:
             pass
 
-        if dl and len(dl) > 1:
+        if unified and dl and len(dl) > 1:
             dl[0] = dl[0].replace(old_tmp, old_file)
             dl[1] = dl[1].replace(new_tmp, new_file)
 
         return dl
 
-    def _diff(self, old_content, new_content, old_file,
-              new_file, xpatches):
+    def _diff(self, old_file, new_file, xpatches=None, unified=True):
         """Calculate the diff.
 
         Content should be a list of strings with no endl. Supports
@@ -289,6 +247,22 @@ class ClearCaseClient(SCMClient):
         Returns None if the files are different and binary. Otherwise
         returns a difference as a list of strings with no lineseps. The
         binary files which are equal also return an empty string."""
+
+        old_content = None
+        new_content = None
+
+        # The content should have line endings removed from it!
+        if cpath.isdir(new_file):
+            # read directory content
+            old_content = sorted(os.listdir(old_file))
+            new_content = sorted(os.listdir(new_file))
+        elif cpath.exists(new_file):
+            # returns None for binary file
+            old_content = read_text_file(old_file)
+            new_content = read_text_file(new_file)
+        else:
+            logging.debug("File %s does not exist or access is denied." % new_file)
+            return None
 
         # check if binary files and if they differ
         if old_content is None or new_content is None:
@@ -306,8 +280,8 @@ class ClearCaseClient(SCMClient):
                 if patched:
                     new_content = patched
 
-        return self._uni_diff(old_content, new_content, old_file,
-                              new_file)
+        return self._content_diff(old_content, new_content, old_file,
+                                  new_file, unified=unified)
 
     def _patch(self, content, patch):
         """Patch content with a patch. Returnes patched content.
@@ -405,57 +379,31 @@ class ClearCaseClient(SCMClient):
 
         return self._sanitize_branch_changeset(changeset)
 
-    def general_diff(self, old_file, new_file, xpatches):
-        """Performs a file/directory diff, interpreting the results and
-        cleanup."""
-
-        old_content = None
-        new_content = None
-
-        # We need oids of files to translate them to paths on
-        # reviewboard repository
-        old_oid = execute(["cleartool", "describe", "-fmt", "%On", old_file])
-        new_oid = execute(["cleartool", "describe", "-fmt", "%On", new_file])
-
-        # The content should have line endings removed from it!
-        if cpath.isdir(new_file):
-            # read directory content
-            old_content = sorted(os.listdir(old_file))
-            new_content = sorted(os.listdir(new_file))
-        elif cpath.exists(new_file):
-            # returns None for binary file
-            old_content = read_text_file(old_file)
-            new_content = read_text_file(new_file)
-        else:
-            logging.debug("File %s does not exist or access is denied." % new_file)
-            return None
-
-        dl = self._diff(old_content, new_content, old_file, new_file,
-                        xpatches)
-        oid_line = "==== %s %s ====" % (old_oid, new_oid)
-
-        if dl is None:
-            dl = [oid_line,
-                  'Binary files %s and %s differ' % (old_file, new_file),
-                  '']
-        elif not dl:
-            dl = [oid_line,
-                  'File %s in your changeset is unmodified' % new_file,
-                  '']
-        else:
-            dl.insert(2, oid_line)
-
-        return dl
-
     def do_diff(self, changeset):
         """Generates a unified diff for all files in the changeset."""
 
         diff = []
         for old_file, new_file, xpatches in changeset:
-            dl = self.general_diff(old_file, new_file, xpatches)
+            # We need oids of files to translate them to paths on
+            # reviewboard repository
+            old_oid = execute(["cleartool", "describe", "-fmt", "%On", old_file])
+            new_oid = execute(["cleartool", "describe", "-fmt", "%On", new_file])
 
-            if dl:
-                diff.append(os.linesep.join(dl))
+            dl = self._diff(old_file, new_file, xpatches=xpatches)
+            oid_line = "==== %s %s ====" % (old_oid, new_oid)
+
+            if dl is None:
+                dl = [oid_line,
+                    'Binary files %s and %s differ' % (old_file, new_file),
+                    '']
+            elif not dl:
+                dl = [oid_line,
+                    'File %s in your changeset is unmodified' % new_file,
+                    '']
+            else:
+                dl.insert(2, oid_line)
+
+            diff.append(os.linesep.join(dl))
 
         return (''.join(diff), None)
 
