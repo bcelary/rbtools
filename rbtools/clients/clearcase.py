@@ -235,8 +235,8 @@ class ClearCaseClient(SCMClient):
             # Because the modification time is for temporary files here
             # replacing it with headers without modification time.
             if dl[0].startswith('---') and dl[1].startswith('+++'):
-                dl[0] = '--- %s' % old_file
-                dl[1] = '+++ %s' % new_file
+                dl[0] = '--- %s\t' % old_file
+                dl[1] = '+++ %s\t' % new_file
 
         return dl
 
