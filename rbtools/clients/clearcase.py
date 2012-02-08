@@ -259,8 +259,8 @@ class ClearCaseClient(SCMClient):
         # The content should have line endings removed from it!
         if cpath.isdir(new_file):
             # read directory content
-            old_content = sorted(os.listdir(old_file))
-            new_content = sorted(os.listdir(new_file))
+            old_content = sorted(os.listdir(old_file)) + ['']
+            new_content = sorted(os.listdir(new_file)) + ['']
         elif cpath.exists(new_file):
             # returns None for binary file
             old_content = read_text_file(old_file)
