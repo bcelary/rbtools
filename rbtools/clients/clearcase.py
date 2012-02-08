@@ -230,10 +230,11 @@ class ClearCaseClient(SCMClient):
             pass
 
         if unified and dl and len(dl) > 1:
-            # XXX the timestamp should be removed, it is valid for the
-            # temporary file only...
-            dl[0] = dl[0].replace(old_tmp, old_file)
-            dl[1] = dl[1].replace(new_tmp, new_file)
+            # Because the modification time is for temporary files here
+            # replacing it with headers without modification time.
+            if dl[0].startswith('---') and dl[1].startswith('+++'):
+                dl[0] = '--- %s' % old_file
+                dl[1] = '+++ %s' % new_file
 
         return dl
 
