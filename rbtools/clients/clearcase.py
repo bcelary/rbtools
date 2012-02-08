@@ -45,17 +45,18 @@ class ClearCaseClient(SCMClient):
         if viewname.startswith('** NONE'):
             return None
 
-        # Now that we know it's ClearCase, make sure we have GNU diff installed,
-        # and error out if we don't.
+        # Now that we know it's ClearCase, make sure we have GNU diff
+        # installed, and error out if we don't.
         check_gnu_diff()
 
-        # When the exclude merge option is enabled, make sure we have GNU patch
-        # installed.
+        # When the exclude merge option is enabled, make sure we have
+        # GNU patch installed.
         if self._options.xmerge:
             check_gnu_patch()
 
-        property_lines = execute(["cleartool", "lsview", "-full", "-properties",
-                                  "-cview"], split_lines=True)
+        property_lines = execute(["cleartool", "lsview", "-full",
+                                  "-properties", "-cview"],
+                                 split_lines=True)
         for line in property_lines:
             properties = line.split(' ')
             if properties[0] == 'Properties:':
@@ -177,7 +178,8 @@ class ClearCaseClient(SCMClient):
 
             if self._options.debug:
                 logging.debug('adding changelist item: (%s, %s, %s)' % (
-                    changeranges[-1][0], changeranges[-1][1], len(changeranges[-1][2])))
+                    changeranges[-1][0], changeranges[-1][1],
+                    len(changeranges[-1][2])))
 
         return changeranges
 
@@ -215,7 +217,7 @@ class ClearCaseClient(SCMClient):
             diff_cmd.append('-uN')
         diff_cmd.extend((old_tmp, new_tmp))
 
-        dl = execute(diff_cmd, extra_ignore_errors=(1,2),
+        dl = execute(diff_cmd, extra_ignore_errors=(1, 2),
                      translate_newlines=False, split_lines=False)
 
         eof_endl = dl.endswith('\n')
@@ -264,7 +266,8 @@ class ClearCaseClient(SCMClient):
             old_content = read_text_file(old_file)
             new_content = read_text_file(new_file)
         else:
-            logging.debug("File %s does not exist or access is denied." % new_file)
+            logging.debug("File %s does not exist or access is denied."
+                          % new_file)
             return None
 
         # check if binary files and if they differ
@@ -389,8 +392,10 @@ class ClearCaseClient(SCMClient):
         for old_file, new_file, xpatches in changeset:
             # We need oids of files to translate them to paths on
             # reviewboard repository
-            old_oid = execute(["cleartool", "describe", "-fmt", "%On", old_file])
-            new_oid = execute(["cleartool", "describe", "-fmt", "%On", new_file])
+            old_oid = execute(["cleartool", "describe", "-fmt", "%On",
+                               old_file])
+            new_oid = execute(["cleartool", "describe", "-fmt", "%On",
+                               new_file])
 
             dl = self._diff(old_file, new_file, xpatches=xpatches)
             oid_line = "==== %s %s ====" % (old_oid, new_oid)
