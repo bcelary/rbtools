@@ -104,7 +104,7 @@ options = None
 configs = []
 
 ADD_REPOSITORY_DOCS_URL = \
-    'http://www.reviewboard.org/docs/manual/dev/admin/management/repositories/'
+    'http://www.reviewboard.org/docs/manual/dev/admin/configuration/repositories/'
 
 
 class HTTPRequest(urllib2.Request):
@@ -324,8 +324,8 @@ class ReviewBoardServer(object):
         information if needed.
         """
         if (options.diff_filename == '-' and
-            not options.username and not options.submit_as and
-            not options.password):
+            not self.has_valid_cookie() or
+            (options.username and options.password)):
             die('Authentication information needs to be provided on '
                 'the command line when using --diff-filename=-')
 
@@ -800,7 +800,10 @@ class ReviewBoardServer(object):
         try:
             r = HTTPRequest(url, body, headers, method='PUT')
             data = urllib2.urlopen(r).read()
-            self.cookie_jar.save(self.cookie_file)
+            try:
+                self.cookie_jar.save(self.cookie_file)
+            except IOError, e:
+                debug('Failed to write cookie file: %s' % e)
             return data
         except urllib2.HTTPError, e:
             # Re-raise so callers can interpret it.
@@ -825,7 +828,10 @@ class ReviewBoardServer(object):
         try:
             r = HTTPRequest(url, method='DELETE')
             data = urllib2.urlopen(r).read()
-            self.cookie_jar.save(self.cookie_file)
+            try:
+                self.cookie_jar.save(self.cookie_file)
+            except IOError, e:
+                debug('Failed to write cookie file: %s' % e)
             return data
         except urllib2.HTTPError, e:
             # Re-raise so callers can interpret it.
