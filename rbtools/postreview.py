@@ -2,6 +2,7 @@
 import base64
 import cookielib
 import getpass
+import logging
 import mimetools
 import os
 import re
@@ -105,6 +106,9 @@ configs = []
 
 ADD_REPOSITORY_DOCS_URL = \
     'http://www.reviewboard.org/docs/manual/dev/admin/configuration/repositories/'
+
+if DEBUG:
+    logging.basicConfig(level=logging.DEBUG)
 
 
 class HTTPRequest(urllib2.Request):
@@ -913,6 +917,9 @@ def debug(s):
         print ">>> %s" % s
 
 
+debug = logging.debug
+
+
 def tempt_fate(server, tool, changenum, diff_content=None,
                parent_diff_content=None, submit_as=None, retries=3):
     """
@@ -1173,6 +1180,9 @@ def parse_options(args):
                       help='temporary directory path (should exist)')
 
     (globals()["options"], args) = parser.parse_args(args)
+
+    if options.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     if options.description and options.description_file:
         sys.stderr.write("The --description and --description-file options "
