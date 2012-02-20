@@ -1141,6 +1141,10 @@ def parse_options(args):
                       action="store_true", dest="xmerge", default=False,
                       help="the Clearcase option to exclude all the merge/"
                            "rebaseline operations for the tracking branch.")
+    parser.add_option("--exclude-files",
+                      dest="exclude_files", default=None,
+                      help="the Clearcase option, excludes the files"
+                      "matching given regular expression from the diff.")
     parser.add_option("--p4-client",
                       dest="p4_client", default=None,
                       help="the Perforce client name that the review is in")

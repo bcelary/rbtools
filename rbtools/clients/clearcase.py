@@ -31,6 +31,13 @@ class ClearCaseClient(SCMClient):
     def __init__(self, **kwargs):
         super(ClearCaseClient, self).__init__(**kwargs)
 
+        if self._options.exclude_files:
+            logging.debug('excluding files, regexp pattern: %s',
+                          self._options.exclude_files)
+            self.exclude_re = re.compile(self._options.exclude_files)
+        else:
+            self.exclude_re = None
+
     def get_repository_info(self):
         """Returns information on the Clear Case repository.
 
@@ -198,10 +205,17 @@ class ClearCaseClient(SCMClient):
         return changeranges
 
     def _construct_changeset(self, output):
-        return [
-            info.split('\t')
-            for info in output.splitlines()
-        ]
+        changeset = []
+
+        for info in output.splitlines():
+            change = info.split('\t')
+            if self.exclude_re and \
+               self.exclude_re.search(change[0]):
+                logging.debug('excluding %s from diff', change[0])
+                continue
+            changeset.append(change)
+
+        return changeset
 
     def _content_diff(self, old_content, new_content, old_file,
                       new_file, unified=True):
