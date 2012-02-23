@@ -17,7 +17,8 @@ from rbtools.api.errors import APIError
 from rbtools.clients import scan_usable_client
 from rbtools.clients.perforce import PerforceClient
 from rbtools.clients.plastic import PlasticClient
-from rbtools.utils.filesystem import get_config_value, load_config_files, TEMP_DIR
+from rbtools.utils.filesystem import get_config_value, load_config_files, \
+                                     TEMP_DIR, diff_stats
 from rbtools.utils.process import die
 
 try:
@@ -1317,6 +1318,10 @@ def main():
         # The comma here isn't a typo, but rather suppresses the extra newline
         print diff,
         sys.exit(0)
+
+    # Print some basic diff's statistics (lines added/removed)
+    (files, ins, dels) = diff_stats(diff)
+    print '%d files changed, %d insertions(+), %d deletions(-)' % (files, ins, dels)
 
     # Let's begin.
     server.login()

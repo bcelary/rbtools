@@ -1,5 +1,6 @@
 import os
 import tempfile
+import re
 
 from rbtools.utils.process import die
 
@@ -110,3 +111,18 @@ def read_text_file(file, keepends=False):
             content += chunk
     finally:
         fd.close()
+
+
+def diff_stats(diff):
+    """Return some basic diff stats based on a view simple regular
+    patters"""
+
+    fls_count = 0
+    ins_count = 0
+    del_count = 0
+    for line in diff.splitlines():
+        fls_count += 1 if line.startswith('+++ ') else 0
+        ins_count += 1 if line.startswith('+ ') else 0
+        del_count += 1 if line.startswith('- ') else 0
+
+    return (fls_count, ins_count, del_count)
