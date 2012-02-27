@@ -35,9 +35,6 @@ configs = []
 ADD_REPOSITORY_DOCS_URL = \
     'http://www.reviewboard.org/docs/manual/dev/admin/configuration/repositories/'
 
-if DEBUG:
-    logging.basicConfig(level=logging.DEBUG)
-
 
 class HTTPRequest(urllib2.Request):
     def __init__(self, url, body='', headers={}, method="PUT"):
