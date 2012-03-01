@@ -121,8 +121,11 @@ def diff_stats(diff):
     ins_count = 0
     del_count = 0
     for line in diff.splitlines():
-        fls_count += 1 if line.startswith('+++ ') else 0
-        ins_count += 1 if line.startswith('+ ') else 0
-        del_count += 1 if line.startswith('- ') else 0
+        if line.startswith('+++ '):
+            fls_count += 1
+        if line.startswith('+ '):
+            ins_count += 1
+        if line.startswith('- '):
+            del_count += 1
 
     return (fls_count, ins_count, del_count)

@@ -1096,8 +1096,8 @@ def parse_options(args):
                            "rebaseline operations for the tracking branch.")
     parser.add_option("--exclude-files",
                       dest="exclude_files", default=None,
-                      help="the Clearcase option, excludes the files"
-                      "matching given regular expression from the diff.")
+                      help="Clearcase option, excludes files from diff "
+                      "matching given regular expression.")
     parser.add_option("--p4-client",
                       dest="p4_client",
                       default=get_config_value(configs, 'P4_CLIENT'),
@@ -1146,8 +1146,7 @@ def parse_options(args):
                       help='password for HTTP Basic authentication')
     parser.add_option('--temp-dir',
                       dest='temp_dir',
-                      default=get_config_value(configs, 'TEMP_DIR',
-                                               TEMP_DIR),
+                      default=get_config_value(configs, 'TEMP_DIR'),
                       metavar='DIR',
                       help='temporary directory path (should exist)')
 
@@ -1199,6 +1198,9 @@ def parse_options(args):
         sys.stderr.write("--change-description may only be used "
                          "when updating an existing review-request\n")
         sys.exit(1)
+
+    if options.temp_dir:
+        TEMP_DIR = options.temp_dir
 
     return args
 
