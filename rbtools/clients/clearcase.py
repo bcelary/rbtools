@@ -102,7 +102,7 @@ class ClearCaseClient(SCMClient):
                               supports_parent_diffs=False)
 
     def check_options(self):
-        if ((self._options.revision_range or self._options.tracking)
+        if ((self.options.revision_range or self.options.tracking)
             and self.viewtype != "dynamic"):
             die("To generate diff using parent branch or by passing revision "
                 "ranges, you must use a dynamic view.")
@@ -432,8 +432,8 @@ class ClearCaseClient(SCMClient):
     def diff(self, files):
         """Performs a diff of the specified file and its previous version."""
 
-        if self._options.tracking:
-            changeset = self.get_branch_changeset(self._options.tracking)
+        if self.options.tracking:
+            changeset = self.get_branch_changeset(self.options.tracking)
         else:
             changeset = self.get_checkedout_changeset()
 
@@ -512,7 +512,7 @@ class ClearCaseRepositoryInfo(RepositoryInfo):
     def _get_repository_info(self, server, repository):
         try:
             return server.get_repository_info(repository['id'])
-        except APIError as e:
+        except APIError, e:
             # If the server couldn't fetch the repository info, it will return
             # code 210. Ignore those.
             # Other more serious errors should still be raised, though.
