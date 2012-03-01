@@ -31,10 +31,10 @@ class ClearCaseClient(SCMClient):
     def __init__(self, **kwargs):
         super(ClearCaseClient, self).__init__(**kwargs)
 
-        if self._options.exclude_files:
+        if self.options.exclude_files:
             logging.debug('excluding files, regexp pattern: %s',
-                          self._options.exclude_files)
-            self.exclude_re = re.compile(self._options.exclude_files)
+                          self.options.exclude_files)
+            self.exclude_re = re.compile(self.options.exclude_files)
         else:
             self.exclude_re = None
 
@@ -58,7 +58,7 @@ class ClearCaseClient(SCMClient):
 
         # When the exclude merge option is enabled, make sure we have
         # GNU patch installed.
-        if self._options.xmerge:
+        if self.options.xmerge:
             check_gnu_patch()
 
         property_lines = execute(["cleartool", "lsview", "-full",
@@ -149,7 +149,7 @@ class ClearCaseClient(SCMClient):
                     'previous': previous
                 }
 
-            if self._options.xmerge and self.HLINK_MERGE.match(hlinks):
+            if self.options.xmerge and self.HLINK_MERGE.match(hlinks):
                 if path not in xpatchlist:
                     xpatchlist[path] = {}
 
@@ -183,7 +183,7 @@ class ClearCaseClient(SCMClient):
                  self._construct_extended_path(path, version['current']),
                  xpatches))
 
-            if self._options.debug:
+            if self.options.debug:
                 logging.debug('adding changelist item: (%s, %s, %s)' % (
                     changeranges[-1][0], changeranges[-1][1],
                     len(changeranges[-1][2])))
