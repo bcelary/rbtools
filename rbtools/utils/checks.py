@@ -38,7 +38,7 @@ def check_gnu_diff():
 
     if not has_gnu_diff:
         sys.stderr.write('\n')
-        sys.stderr.write('GNU diff is required to post this review.'
+        sys.stderr.write('GNU diff is required to post this review.\n'
                          'Make sure it is installed and in the path.\n')
         sys.stderr.write('\n')
 
@@ -56,6 +56,13 @@ def check_gnu_patch():
 
     try:
         result = execute(['patch', '--version'], ignore_errors=True)
+        has_gnu_patch = 'Free Software Foundation' in result
+    except OSError:
+        pass
+
+    try:
+        # SunOS has gpatch
+        result = execute(['gpatch', '--version'], ignore_errors=True)
         has_gnu_patch = 'Free Software Foundation' in result
     except OSError:
         pass
