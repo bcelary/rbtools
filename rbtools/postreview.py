@@ -728,7 +728,7 @@ class ReviewBoardServer(object):
         }
 
         try:
-            r = HTTPRequest(url, body, headers, method='PUT')
+            r = HTTPRequest(str(url), body, headers, method='PUT')
             data = urllib2.urlopen(r).read()
             try:
                 self.cookie_jar.save(self.cookie_file)
@@ -855,6 +855,12 @@ def tempt_fate(server, tool, changenum, diff_content=None,
     try:
         if options.rid:
             review_request = server.get_review_request(options.rid)
+            status = review_request['status']
+
+            if status == 'submitted':
+                die("Review request %s is marked as %s. In order to "
+                    "update it, please reopen the request using the web "
+                    "interface and try again." % (options.rid, status))
         else:
             review_request = server.new_review_request(changenum, submit_as)
 
@@ -904,9 +910,9 @@ def tempt_fate(server, tool, changenum, diff_content=None,
             # number of retries.
             if retries >= 0:
                 server.login(force=True)
-                tempt_fate(server, tool, changenum, diff_content,
-                           parent_diff_content, submit_as, retries=retries)
-                return
+                return tempt_fate(server, tool, changenum, diff_content,
+                                  parent_diff_content, submit_as,
+                                  retries=retries)
 
         if options.rid:
             die("Error getting review request %s: %s" % (options.rid, e))
@@ -1153,7 +1159,7 @@ def parse_options(args):
     (globals()["options"], args) = parser.parse_args(args)
 
     if options.debug:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if options.description and options.description_file:
         sys.stderr.write("The --description and --description-file options "
@@ -1214,6 +1220,10 @@ def main():
         homepath = os.environ["HOME"]
     else:
         homepath = ''
+
+    # If we end up creating a cookie file, make sure it's only readable by the
+    # user.
+    os.umask(0077)
 
     # Load the config and cookie files
     cookie_file = os.path.join(homepath, ".post-review-cookies.txt")
